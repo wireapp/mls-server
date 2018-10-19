@@ -1,0 +1,45 @@
+name:          mls-server
+version:       '0.1.0'
+synopsis:      'A prototype server for MLS clients.'
+author:        Wire Swiss GmbH
+maintainer:    Wire Swiss GmbH <opensource@wire.com>
+copyright:     (c) 2018 Wire Swiss GmbH
+license:       AGPL-3
+license-file:  LICENSE
+category:      Network
+description:   'See README.md'
+github:        wireapp/mls-server
+
+extra-source-files:
+  - README.md
+
+library:
+  source-dirs: src
+  dependencies:
+    - base >=4.7 && <5
+    - aeson
+    - servant-server
+    - wai
+    - warp
+
+executables:
+  mls-server:
+    main: Main.hs
+    source-dirs: app
+    ghc-options: -threaded -rtsopts -with-rtsopts=-N
+    dependencies:
+      - base
+      - mls-server
+
+tests:
+  mls-server-test:
+    main: Spec.hs
+    source-dirs: test
+    ghc-options: -threaded -rtsopts -with-rtsopts=-N
+    dependencies:
+      - base
+      - mls-server
+      - hspec
+      - hspec-wai
+      - hspec-wai-json
+      - aeson
