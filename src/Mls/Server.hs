@@ -24,8 +24,16 @@ data Blob = Blob
     , blobContent :: Value  -- ^ Blob contents (any JSON value)
     } deriving (Eq, Show, Generic)
 
-instance ToJSON Blob
-instance FromJSON Blob
+instance ToJSON Blob where
+    toJSON o = object
+        [ "index" .= blobIndex o
+        , "content" .= blobContent o
+        ]
+
+instance FromJSON Blob where
+    parseJSON = withObject "Blob" $ \o ->
+        Blob <$> o .: "index"
+             <*> o .: "content"
 
 -- | A group identifier (can be anything).
 type GroupId = Text
@@ -44,7 +52,8 @@ type Api =
     -- Append a blob
        "groups" :> Capture "id" GroupId :> "blobs"
     :> ReqBody '[JSON] Blob
-    :> PostNoContent '[JSON] NoContent
+    :> PostNoContent '[JSON] NoContent  -- NB: 'PostNoContent' instructs
+                                        -- servant to return code 204
 
 -- | A list of handlers for the API.
 server :: Server Api
@@ -67,20 +76,20 @@ storage = unsafePerformIO StmMap.newIO
 -- invalid.
 getBlobs
     :: GroupId         -- ^ Group ID
-    -> Maybe Int       -- ^ Beginning of the range
-    -> Maybe Int       -- ^ End of the range
+    -> Maybe Int       -- ^ Beginning of the range (inclusive)
+    -> Maybe Int       -- ^ End of the range (exclusive)
     -> Handler [Blob]
 getBlobs groupId mbFrom mbTo = do
     allBlobs <- liftIO $ atomically $
                 fromMaybe [] <$> StmMap.lookup groupId storage
     let len  = length allBlobs
         from = fromMaybe 0 mbFrom
-        to   = fromMaybe (len-1) mbTo
-    if 0 <= from && from <= to && to < len
-       then pure (take (to-from+1) (drop from allBlobs))
-       else throwError $ err400 { errBody =
-                "Requested range is "+|tupleF (from, to)|+", "<>
-                "which is not inside "+|tupleF (0::Int, len-1)|+"" }
+        to   = fromMaybe len mbTo
+    if 0 <= from && from <= to && to <= len
+       then pure (take (to-from) (drop from allBlobs))
+       else throwError $ err400 { errBody = format
+                "Requested range is [{}; {}), which is not inside [{}; {})"
+                from to (0 :: Int) len }
 
 -- | Append a single blob to the group-stored blobs.
 --

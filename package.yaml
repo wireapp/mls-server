@@ -26,6 +26,7 @@ dependencies:
   - base >=4.7 && <5
   - base-prelude
   - text
+  - bytestring
   - aeson
   - fmt
 
@@ -56,3 +57,5 @@ tests:
       - hspec
       - hspec-wai
       - hspec-wai-json
+      - wai-extra
+      - http-types

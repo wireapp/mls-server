@@ -2,18 +2,24 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Main (main) where
 
-import Mls.Server (app)
+import BasePrelude
 import Test.Hspec hiding (pending)
 import Test.Hspec.Wai
 import Test.Hspec.Wai.JSON
+import Network.Wai.Test hiding (request)
+import Network.HTTP.Types
+import Data.ByteString (ByteString)
+import qualified Data.ByteString.Lazy as BSL
+
+import Mls.Server (mlsServer)
 
 main :: IO ()
 main = hspec spec
 
 spec :: Spec
-spec = with (return app) $ do
+spec = with (return mlsServer) $ do
 
-    -- Get blobs from X to Y (inclusive)
+    -- Get blobs in range [X; Y)
     describe "GET /groups/:id/blobs" $ do
         it "succeeds for a non-existent group" $
             -- No group = empty list
@@ -26,11 +32,11 @@ spec = with (return app) $ do
                 blob1 = [json| {"index": 1, "content": 256} |]
                 blob2 = [json| {"index": 2, "content": true} |]
             -- Post all of them
-            post "/groups/1/blobs" blob0 `shouldRespondWith` 204
-            post "/groups/1/blobs" blob1 `shouldRespondWith` 204
-            post "/groups/1/blobs" blob2 `shouldRespondWith` 204
-            -- Try to get blobs 0..1
-            get "/groups/1/blobs?from=0&to=1" `shouldRespondWith`
+            postJson "/groups/1/blobs" blob0 `shouldRespondWith` 204
+            postJson "/groups/1/blobs" blob1 `shouldRespondWith` 204
+            postJson "/groups/1/blobs" blob2 `shouldRespondWith` 204
+            -- Try to get blobs 0,1
+            get "/groups/1/blobs?from=0&to=2" `shouldRespondWith`
                 [json| [ {"index": 0, "content": "Hello"}
                        , {"index": 1, "content": 256} ] |]
 
@@ -41,11 +47,15 @@ spec = with (return app) $ do
                        , {"index": 1, "content": 256}
                        , {"index": 2, "content": true} ] |]
 
+        it "allows empty ranges" $ do
+            get "/groups/1/blobs?from=2&to=2" `shouldRespondWith`
+                [json| [] |]
+
         it "fails on ranges where from>to" $ do
             get "/groups/1/blobs?from=2&to=1" `shouldRespondWith` 400
 
         it "fails on out-of-bounds ranges" $ do
-            get "/groups/1/blobs?from=1&to=3" `shouldRespondWith` 400
+            get "/groups/1/blobs?from=1&to=4" `shouldRespondWith` 400
             get "/groups/1/blobs?from=-1&to=0" `shouldRespondWith` 400
 
     -- Append a blob (and check the counter)
@@ -53,7 +63,7 @@ spec = with (return app) $ do
         it "doesn't accept blobs from the past" $ do
             -- A blob with the same index as the current one won't be accepted
             let blob2 = [json| {"index": 2, "content": false} |]
-            post "/groups/1/blobs" blob2 `shouldRespondWith` 400
+            postJson "/groups/1/blobs" blob2 `shouldRespondWith` 400
             -- The contents should not be rewritten
             get "/groups/1/blobs?from=2" `shouldRespondWith`
                 [json| [ {"index": 2, "content": true} ] |]
@@ -62,7 +72,7 @@ spec = with (return app) $ do
             -- A blob with an index that doesn't immediately follow the
             -- current one won't be accepted
             let blob4 = [json| {"index": 4, "content": false} |]
-            post "/groups/1/blobs" blob4 `shouldRespondWith` 400
+            postJson "/groups/1/blobs" blob4 `shouldRespondWith` 400
             -- Check the full contents just in case
             get "/groups/1/blobs" `shouldRespondWith`
                 [json| [ {"index": 0, "content": "Hello"}
@@ -72,10 +82,18 @@ spec = with (return app) $ do
         it "doesn't allow starting a new group with index != 0" $ do
             -- For a new group, a blob with a non-zero index won't be accepted
             let blob1 = [json| {"index": 1, "content": 256} |]
-            post "/groups/2/blobs" blob1 `shouldRespondWith` 400
+            postJson "/groups/2/blobs" blob1 `shouldRespondWith` 400
             -- A blob with a negative index won't be accepted either
             let blob_1 = [json| {"index": -1, "content": 256} |]
-            post "/groups/2/blobs" blob_1 `shouldRespondWith` 400
+            postJson "/groups/2/blobs" blob_1 `shouldRespondWith` 400
             -- No group = empty list
             get "/groups/2/blobs" `shouldRespondWith`
                 [json| [] |]
+
+----------------------------------------------------------------------------
+-- Helpers
+
+-- | Like 'post', but sets the proper content type. Without that, servant
+-- rejects requests with error code 415.
+postJson :: ByteString -> BSL.ByteString -> WaiSession SResponse
+postJson path = request methodPost path [(hContentType, "application/json")]
