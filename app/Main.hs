@@ -1,6 +1,6 @@
 module Main where
 
-import MLS.Server
+import Mls.Server
 
 main :: IO ()
-main = startApp
+main = startMlsServer

@@ -2,3 +2,14 @@ resolver: lts-12.4
 
 packages:
 - .
+
+extra-deps:
+# fmt is not on Stackage
+- fmt-0.6
+# The newer version of stm-containers is more pleasant to work with
+- stm-containers-1.1.0.2
+- focus-1.0.1.2
+- deferred-folds-0.9.7.1
+- stm-hamt-1.2.0.2
+- primitive-0.6.4.0
+- primitive-extras-0.7.1

@@ -13,14 +13,30 @@ github:        wireapp/mls-server
 extra-source-files:
   - README.md
 
+default-extensions:
+  - NoImplicitPrelude
+  - DataKinds
+  - TypeOperators
+  - TypeApplications
+  - DeriveGeneric
+  - OverloadedStrings
+  - LambdaCase
+
+dependencies:
+  - base >=4.7 && <5
+  - base-prelude
+  - text
+  - aeson
+  - fmt
+
 library:
   source-dirs: src
   dependencies:
-    - base >=4.7 && <5
-    - aeson
     - servant-server
     - wai
     - warp
+    - stm-containers
+    - focus
 
 executables:
   mls-server:
@@ -28,7 +44,6 @@ executables:
     source-dirs: app
     ghc-options: -threaded -rtsopts -with-rtsopts=-N
     dependencies:
-      - base
       - mls-server
 
 tests:
@@ -37,9 +52,7 @@ tests:
     source-dirs: test
     ghc-options: -threaded -rtsopts -with-rtsopts=-N
     dependencies:
-      - base
       - mls-server
       - hspec
       - hspec-wai
       - hspec-wai-json
-      - aeson

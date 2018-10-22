@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Main (main) where
 
-import MLS.Server (app)
+import Mls.Server (app)
 import Test.Hspec hiding (pending)
 import Test.Hspec.Wai
 import Test.Hspec.Wai.JSON
@@ -26,9 +26,9 @@ spec = with (return app) $ do
                 blob1 = [json| {"index": 1, "content": 256} |]
                 blob2 = [json| {"index": 2, "content": true} |]
             -- Post all of them
-            post "/groups/1/blobs" blob0 `shouldRespondWith` 200
-            post "/groups/1/blobs" blob1 `shouldRespondWith` 200
-            post "/groups/1/blobs" blob2 `shouldRespondWith` 200
+            post "/groups/1/blobs" blob0 `shouldRespondWith` 204
+            post "/groups/1/blobs" blob1 `shouldRespondWith` 204
+            post "/groups/1/blobs" blob2 `shouldRespondWith` 204
             -- Try to get blobs 0..1
             get "/groups/1/blobs?from=0&to=1" `shouldRespondWith`
                 [json| [ {"index": 0, "content": "Hello"}
@@ -40,6 +40,13 @@ spec = with (return app) $ do
                 [json| [ {"index": 0, "content": "Hello"}
                        , {"index": 1, "content": 256}
                        , {"index": 2, "content": true} ] |]
+
+        it "fails on ranges where from>to" $ do
+            get "/groups/1/blobs?from=2&to=1" `shouldRespondWith` 400
+
+        it "fails on out-of-bounds ranges" $ do
+            get "/groups/1/blobs?from=1&to=3" `shouldRespondWith` 400
+            get "/groups/1/blobs?from=-1&to=0" `shouldRespondWith` 400
 
     -- Append a blob (and check the counter)
     describe "POST /groups/:id/blobs" $ do
