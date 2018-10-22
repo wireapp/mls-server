@@ -14,7 +14,7 @@ All endpoints accept and return JSON, unless stated otherwise.
 
 The server stores blobs. A `Blob` has the following schema:
 
-```json
+```
 {
     "index"   : int >= 0,
     "content" : JSON
@@ -27,17 +27,17 @@ For a group, get a list of all blobs in some range, from oldest to newest.
 
 **Parameters:**
 
-| Name | Type | Description |
+| Name&nbsp;&nbsp;&nbsp; | Type | Description |
 | --- | --- | --- |
-| `:id` | Any string | Group ID. |
-| `?from` | Int (optional) | The beginning of the range (inclusive). If this parameter is not specified, enumeration will start from the first blob. |
-| `?to` | Int (optional) | The end of the range (exclusive). If this parameter is not specified, enumeration will proceed until the last blob. |
+| `:id` | Any&nbsp;string | Group ID. |
+| `?from` | Int&nbsp;(optional) | The beginning of the range (inclusive). If this parameter is not specified, enumeration will start from the first blob. |
+| `?to` | Int&nbsp;(optional) | The end of the range (exclusive). If this parameter is not specified, enumeration will proceed until the last blob. |
 
 **Returns:**
 
-| Status | Return type | Description |
+| Status | Return&nbsp;type | Description |
 | --- | --- | --- |
-| 200 | Array of Blobs | An array with requested blobs. Can be empty. |
+| 200 | Array&nbsp;of&nbsp;Blobs | An array with requested blobs. Can be empty. |
 | 400 | - | The range is outside of the allowed range `[0; len)`, or the lower bound of the range is higher than the upper bound. |
 
 ### `POST /groups/:id/blobs`
