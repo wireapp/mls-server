@@ -1,3 +1,5 @@
+{-# LANGUAGE NamedFieldPuns #-}
+
 -- | A prototype of an MLS server.
 module Mls.Server
     ( startMlsServer
@@ -6,7 +8,7 @@ module Mls.Server
 
 import BasePrelude hiding (Handler)
 import Fmt
-import Data.Aeson
+import Data.Aeson as Aeson
 import Network.Wai
 import Network.Wai.Handler.Warp
 import Data.Text (Text)
@@ -37,6 +39,60 @@ instance FromJSON Blob where
 
 -- | A group identifier (can be anything).
 type GroupId = Text
+
+----------------------------------------------------------------------------
+-- Error-handling
+
+-- | All errors that can be thrown by API handlers.
+data MlsError
+    = BlobRangeOutOfBounds
+          { allowedRange :: (Int, Int)
+          , requestedRange :: (Int, Int) }
+    | InvalidBlobRange
+          { requestedRange :: (Int, Int) }
+    | UnexpectedBlobIndex
+          { expectedIndex :: Int
+          , gotIndex :: Int }
+    deriving (Eq, Show)
+
+-- | Render a 'MlsError' as a 'ServantErr'.
+mlsError :: MlsError -> ServantErr
+mlsError = \case
+    BlobRangeOutOfBounds {allowedRange, requestedRange} ->
+        let description =
+                "Requested range is "+|rangeF requestedRange|+
+                ", which is not inside "+|rangeF allowedRange|+""
+        in  mkError err400 "BlobRangeOutOfBounds" description $ object
+                [ "allowed_range" .= range allowedRange
+                , "requested_range" .= range requestedRange ]
+
+    InvalidBlobRange {requestedRange} ->
+        let description =
+                "The lower end of requested range "+|rangeF requestedRange|+
+                " is higher than the upper end"
+        in mkError err400 "InvalidBlobRange" description $ object
+            [ "requested_range" .= range requestedRange ]
+
+    UnexpectedBlobIndex {expectedIndex, gotIndex} ->
+        let description =
+                "The new blob should have index "+|expectedIndex|+
+                ", but got a blob with index "+|gotIndex|+""
+        in mkError err400 "UnexpectedBlobIndex" description $ object
+            [ "expected_index" .= expectedIndex
+            , "got_index" .= gotIndex ]
+
+  where
+    -- Create a Servant error
+    mkError :: ServantErr -> Text -> Text -> Aeson.Value -> ServantErr
+    mkError err tag description body = err {
+        errBody = Aeson.encode $ object
+            [ "tag" .= tag
+            , "description" .= description
+            , "body" .= body ] }
+    -- Format a range as JSON
+    range (from, to) = object ["from" .= from, "to" .= to]
+    -- Format a range as text
+    rangeF (from, to) = format "[{}; {})" from to :: Builder
 
 ----------------------------------------------------------------------------
 -- API
@@ -85,11 +141,14 @@ getBlobs groupId mbFrom mbTo = do
     let len  = length allBlobs
         from = fromMaybe 0 mbFrom
         to   = fromMaybe len mbTo
-    if 0 <= from && from <= to && to <= len
-       then pure (take (to-from) (drop from allBlobs))
-       else throwError $ err400 { errBody = format
-                "Requested range is [{}; {}), which is not inside [{}; {})"
-                from to (0 :: Int) len }
+    unless (0 <= from && to <= len) $
+        throwError $ mlsError $ BlobRangeOutOfBounds
+            { allowedRange = (0, len)
+            , requestedRange = (from, to) }
+    unless (from <= to) $
+        throwError $ mlsError $ InvalidBlobRange
+            { requestedRange = (from, to) }
+    pure (take (to-from) (drop from allBlobs))
 
 -- | Append a single blob to the group-stored blobs.
 --
@@ -102,9 +161,10 @@ appendBlob
 appendBlob groupId blob = do
     liftIO (atomically (StmMap.focus update groupId storage)) >>= \case
         Right () -> pure NoContent
-        Left expectedIndex -> throwError $ err400 { errBody =
-            "The inserted blob should have index "+|expectedIndex|+", "<>
-            "but its index is "+|blobIndex blob|+"" }
+        Left expectedIndex -> throwError $
+            mlsError $ UnexpectedBlobIndex
+                { expectedIndex = expectedIndex
+                , gotIndex = blobIndex blob }
   where
     -- Either append or say what the index was expected to be
     update :: Focus.Focus [Blob] STM (Either Int ())
