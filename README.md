@@ -43,7 +43,7 @@ For a group, get a list of all blobs in some range, from oldest to newest.
 **Error schema:**
 
 ```javascript
-# The range is outside of the allowed range
+// The range is outside of the allowed range
 {
     "tag": "BlobRangeOutOfBounds",
     "description": "...",
@@ -56,7 +56,7 @@ For a group, get a list of all blobs in some range, from oldest to newest.
 ```
 
 ```javascript
-# The lower bound of the range is higher than the upper bound
+// The lower bound of the range is higher than the upper bound
 {
     "tag": "InvalidBlobRange",
     "description": "...",
@@ -96,7 +96,7 @@ Blob indices have to go in order, starting from 0:
 **Error schema:**
 
 ```javascript
-# The blob has the wrong index
+// The blob has the wrong index
 {
     "tag": "UnexpectedBlobIndex",
     "description": "...",
