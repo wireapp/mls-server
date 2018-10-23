@@ -40,6 +40,33 @@ For a group, get a list of all blobs in some range, from oldest to newest.
 | 200 | Array&nbsp;of&nbsp;Blobs | An array with requested blobs. Can be empty. |
 | 400 | - | The range is outside of the allowed range `[0; len)`, or the lower bound of the range is higher than the upper bound. |
 
+**Error schema:**
+
+```javascript
+# The range is outside of the allowed range
+{
+    "tag": "BlobRangeOutOfBounds",
+    "description": "...",
+    "body":
+        {
+            "allowed_range": {"from": int, "to": int},
+            "requested_range": {"from": int, "to": int}
+        }
+}
+```
+
+```javascript
+# The lower bound of the range is higher than the upper bound
+{
+    "tag": "InvalidBlobRange",
+    "description": "...",
+    "body":
+        {
+            "requested_range": {"from": int, "to": int}
+        }
+}
+```
+
 ### `POST /groups/:id/blobs`
 
 Append a new blob to the list of blobs belonging to the group. If the group
@@ -65,3 +92,18 @@ Blob indices have to go in order, starting from 0:
 | --- | --- | --- |
 | 204 | - | The blob has been appended. |
 | 400 | - | The blob has the wrong index. |
+
+**Error schema:**
+
+```javascript
+# The blob has the wrong index
+{
+    "tag": "UnexpectedBlobIndex",
+    "description": "...",
+    "body":
+        {
+            "expected_index": int,
+            "got_index": int
+        }
+}
+```
