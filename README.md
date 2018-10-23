@@ -14,7 +14,7 @@ All endpoints accept and return JSON, unless stated otherwise.
 
 The server stores blobs. A `Blob` has the following schema:
 
-```
+```javascript
 {
     "index"   : int >= 0,
     "content" : JSON
