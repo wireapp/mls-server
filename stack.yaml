@@ -4,12 +4,28 @@ packages:
 - .
 
 extra-deps:
-# fmt is not on Stackage
+
+# fmt is not on Stackage.
 - fmt-0.6.1
-# The newer version of stm-containers is more pleasant to work with
+
+# The newer version of stm-containers is more pleasant to work with.
 - stm-containers-1.1.0.2
 - focus-1.0.1.2
 - deferred-folds-0.9.7.1
 - stm-hamt-1.2.0.2
 - primitive-0.6.4.0
 - primitive-extras-0.7.1
+
+# cql-io 1.1.0 (unreleased), includes the changes from
+# https://gitlab.com/twittner/cql-io/merge_requests/14.
+# It's also the version used in wire-server as of Oct 25, 2018.
+- git: https://gitlab.com/twittner/cql-io.git
+  commit: 8b91d053c469887a427e8c075cef43139fa189c4
+
+# We use some utility libraries from wire-server, but none of the
+# Wire-specific types.
+- git: https://github.com/wireapp/wire-server.git
+  commit: 6da289add2047498480a4159952a2b88ded39ce3
+  subdirs:
+  - libs/cassandra-util
+  - libs/imports

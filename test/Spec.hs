@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Main (main) where
 
-import BasePrelude
+import Imports
 import Test.Hspec hiding (pending)
 import Test.Hspec.Wai
 import Test.Hspec.Wai.JSON
@@ -11,13 +11,13 @@ import Network.HTTP.Types
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Lazy as BSL
 
-import Mls.Server (mlsServer)
+import Mls.Server (inMemoryServer)
 
 main :: IO ()
 main = hspec spec
 
 spec :: Spec
-spec = with (return mlsServer) $ do
+spec = beforeAll inMemoryServer $ do
 
     -- Get blobs in range [X; Y)
     describe "GET /groups/:id/blobs" $ do

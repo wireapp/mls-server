@@ -1,7 +1,13 @@
 module Main where
 
-import BasePrelude
+import Imports
+
 import Mls.Server
+import Mls.Server.Util
 
 main :: IO ()
-main = startMlsServer
+main = do
+    let desc = "MLS Server"
+        defaultPath = "/etc/wire/mls-server/conf/mls-server.yaml"
+    options <- getOptions desc Nothing defaultPath
+    runServer options
