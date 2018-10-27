@@ -3,6 +3,7 @@
 module Main (main) where
 
 import Imports
+import Control.Exception (bracket)
 import Test.Hspec hiding (pending)
 import Test.Hspec.Wai
 import Test.Hspec.Wai.JSON
@@ -11,13 +12,21 @@ import Network.HTTP.Types
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Lazy as BSL
 
-import Mls.Server (inMemoryServer)
+import Mls.Server
+import Mls.Server.Settings
+import Mls.Server.Data
 
 main :: IO ()
-main = hspec spec
+main = do
+    let settings = Settings
+            { storage = UseInMemory
+            , port = 8080  -- won't be used
+            }
+    bracket (newEnv settings) closeEnv $ \env ->
+        hspec (spec env)
 
-spec :: Spec
-spec = beforeAll inMemoryServer $ do
+spec :: Env -> Spec
+spec env = with (pure (app env)) $ do
 
     -- Get blobs in range [X; Y)
     describe "GET /groups/:id/blobs" $ do

@@ -1,7 +1,16 @@
+{-# LANGUAGE RecordWildCards #-}
+
 -- | A prototype of an MLS server.
 module Mls.Server
-    ( runServer
-    , inMemoryServer
+    (
+    -- * Server
+      runServer
+    , app
+
+    -- * Environment
+    , Env(..)
+    , newEnv
+    , closeEnv
     ) where
 
 import Imports
@@ -12,6 +21,7 @@ import Servant
 import Control.Monad.Except
 import Control.Exception (bracket)
 import qualified System.Logger as Log
+import System.Logger (Logger)
 
 import Mls.Server.Data as Data
 import Mls.Server.Error
@@ -37,42 +47,50 @@ type Api =
                                         -- servant to return code 204
 
 -- | A list of handlers for the API.
-server :: Storage -> Server Api
-server storage =
+server :: Env -> Server Api
+server env =
     hoistServer (Proxy @Api) toHandler $
-        Data.getBlobs storage
+        Data.getBlobs (storage env)
         :<|>
-        (\a b -> Data.appendBlob storage a b $> NoContent)
+        (\a b -> Data.appendBlob (storage env) a b $> NoContent)
   where
     toHandler :: ExceptT MlsError IO a -> Handler a
     toHandler = Handler . withExceptT mlsError
 
 ----------------------------------------------------------------------------
--- Wrappers
+-- Server
 
 -- | Run the server.
-runServer :: Settings -> IO ()
-runServer settings = do
-    bracket newEnv closeEnv $ \(_logger, storage) ->
-        run (fromIntegral (Settings.port settings)) $
-            serve (Proxy @Api) (server storage)
-  where
-    newEnv = do
-        logger <- Log.new $ Log.defSettings
-            & Log.setOutput Log.StdOut
-            & Log.setFormat Nothing
-        storage <- openStorage logger (Settings.storage settings)
-        pure (logger, storage)
+runServer :: Env -> IO ()
+runServer env =
+    run (fromIntegral (Settings.port (settings env))) (app env)
 
-    closeEnv (logger, storage) = do
-        closeStorage storage
-        Log.flush logger >> Log.close logger
+-- | Create a WAI 'Application'.
+app :: Env -> Application
+app env = serve (Proxy @Api) (server env)
 
--- | Create a test application that only works in-memory.
-inMemoryServer :: IO Application
-inMemoryServer = do
+----------------------------------------------------------------------------
+-- Environment
+
+-- | Environment with things like database connections, etc. Used by the
+-- server.
+data Env = Env
+    { logger :: Logger
+    , storage :: Storage
+    , settings :: Settings
+    }
+
+-- | Create an environment according to some 'Settings'.
+newEnv :: Settings -> IO Env
+newEnv settings = do
     logger <- Log.new $ Log.defSettings
         & Log.setOutput Log.StdOut
         & Log.setFormat Nothing
-    storage <- openStorage logger UseInMemory
-    pure $ serve (Proxy @Api) (server storage)
+    storage <- openStorage logger (Settings.storage settings)
+    pure Env{..}
+
+-- | Gracefully destroy the resources contained in the environment.
+closeEnv :: Env -> IO ()
+closeEnv env = do
+    closeStorage (storage env)
+    Log.flush (logger env) >> Log.close (logger env)
