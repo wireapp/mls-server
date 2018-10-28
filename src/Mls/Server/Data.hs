@@ -23,6 +23,7 @@ import Control.Monad.Except
 import qualified Cassandra as C
 import qualified Cassandra.Settings as C
 import qualified Cassandra.Schema as C
+import qualified Database.CQL.IO as C
 import qualified StmContainers.Map as StmMap
 import qualified Focus
 import qualified Data.List.NonEmpty as NE
@@ -105,7 +106,7 @@ closeStorage (CassandraStorage cas) =
 --
 -- NB: These methods work for all storage options we support. Most of the
 -- code inside the methods is storage-agnostic; any non-generic code resides
--- in the helper functions (in 'where').
+-- in helper functions.
 
 -- | Get blobs stored for a specific group.
 --
@@ -114,11 +115,11 @@ closeStorage (CassandraStorage cas) =
 getBlobs
     :: Storage
     -> GroupId         -- ^ Group ID
-    -> Maybe Int       -- ^ Beginning of the range (inclusive)
-    -> Maybe Int       -- ^ End of the range (exclusive)
+    -> Maybe Int32     -- ^ Beginning of the range (inclusive)
+    -> Maybe Int32     -- ^ End of the range (exclusive)
     -> ExceptT MlsError IO [Blob]
 getBlobs storage groupId mbFrom mbTo = do
-    len <- liftIO getBlobCount
+    len <- liftIO $ getBlobCount storage groupId
     let from = fromMaybe 0 mbFrom
         to   = fromMaybe len mbTo
     unless (0 <= from && to <= len) $
@@ -129,43 +130,9 @@ getBlobs storage groupId mbFrom mbTo = do
         throwError $ InvalidBlobRange
             { requestedRange = (from, to) }
     -- NB: Here we rely on the fact that the list of blobs is append-only
-    -- and the property of isolation is still satisfied even if blobs get
-    -- appended in the period of time between 'getBlobCount' and 'getRange'.
-    liftIO $ getRange from to
-  where
-    -- Find out how many blobs are available.
-    getBlobCount :: IO Int
-    getBlobCount = case storage of
-        InMemoryStorage var -> atomically $
-            maybe 0 length <$> StmMap.lookup groupId var
-        CassandraStorage cas -> do
-            let q :: C.PrepQuery C.R (Identity GroupId) (Identity Int64)
-                q = "select count(*) from blobs \
-                    \where group = ?"
-            fmap (maybe 0 (fromIntegral . runIdentity)) $
-                C.runClient cas $ C.query1 q $
-                C.params C.Quorum (Identity groupId)
-
-    -- Get a range of blobs without doing any checks on it.
-    getRange :: Int -> Int -> IO [Blob]
-    getRange from to = case storage of
-        InMemoryStorage var -> atomically $
-            take (to-from) . drop from . fromMaybe [] <$>
-            StmMap.lookup groupId var
-        CassandraStorage cas -> do
-            let q :: C.PrepQuery C.R (GroupId, Int64, Int64) (Int64, C.Blob)
-                q = "select index, content from blobs \
-                    \where group = ? and ? <= index and index < ?"
-            let mkBlob (i, c) = Blob
-                    { blobIndex = fromIntegral i
-                    , blobContent = case eitherDecode (C.fromBlob c) of
-                          Right x -> x
-                          Left err -> error $ format
-                              "Group {}, blob #{}: {}" groupId i err
-                    }
-            fmap (map mkBlob) $
-                C.runClient cas $ C.query q $
-                C.params C.Quorum (groupId, fromIntegral from, fromIntegral to)
+    -- and the property of isolation is satisfied even if blobs get appended
+    -- in the period of time between 'getBlobCount' and 'getRange'.
+    liftIO $ getRange storage groupId (from, to)
 
 -- | Append a single blob to the group-stored blobs.
 --
@@ -177,27 +144,93 @@ appendBlob
     -> Blob            -- ^ Blob to append
     -> ExceptT MlsError IO ()
 appendBlob storage groupId blob = do
-    liftIO append >>= \case
+    liftIO (maybeAppend storage groupId blob) >>= \case
         Right () -> pure ()
         Left expectedIndex ->
             throwError $ UnexpectedBlobIndex
                 { expectedIndex = expectedIndex
                 , gotIndex = blobIndex blob }
-  where
-    -- Either append the blob, or say what the index was expected to be.
-    append :: IO (Either Int ())
-    append = case storage of
-        InMemoryStorage var ->
-            let update = Focus.lookup >>= \case
-                    Nothing ->
-                        if blobIndex blob == 0
-                            then Focus.insert [blob] $> Right ()
-                            else pure (Left 0)
-                    Just xs ->
-                        let lastIndex = blobIndex (last xs) in
-                        if blobIndex blob == lastIndex + 1
-                            then Focus.adjust (++ [blob]) $> Right ()
-                            else pure (Left (lastIndex + 1))
-            in atomically $ StmMap.focus update groupId var
-        CassandraStorage cas ->
-            undefined
+
+----------------------------------------------------------------------------
+-- Helper functions
+
+-- | Find out how many blobs are available.
+getBlobCount
+    :: Storage
+    -> GroupId
+    -> IO Int32
+getBlobCount storage groupId = case storage of
+    InMemoryStorage var -> atomically $
+        maybe 0 genericLength <$> StmMap.lookup groupId var
+    CassandraStorage cas -> do
+        let q :: C.PrepQuery C.R (Identity GroupId) (Identity Int32)
+            q = "select count(*) from blobs \
+                \where group = ?"
+        fmap (maybe 0 runIdentity) $
+            C.runClient cas $ C.query1 q $
+            C.params C.Quorum (Identity groupId)
+
+-- | Get a range of blobs without doing any checks on it.
+getRange
+    :: Storage
+    -> GroupId
+    -> (Int32, Int32) -- ^ Range
+    -> IO [Blob]
+getRange storage groupId (from, to) = case storage of
+    InMemoryStorage var -> atomically $
+        genericTake (to-from) . genericDrop from . fromMaybe [] <$>
+        StmMap.lookup groupId var
+    CassandraStorage cas -> do
+        let q :: C.PrepQuery C.R (GroupId, Int32, Int32) (Int32, C.Blob)
+            q = "select index, content from blobs \
+                \where group = ? and ? <= index and index < ?"
+        let mkBlob (i, c) = Blob
+                { blobIndex = i
+                , blobContent = case eitherDecode (C.fromBlob c) of
+                      Right x -> x
+                      Left err -> error $ format
+                          "Group {}, blob #{}: {}" groupId i err
+                }
+        fmap (map mkBlob) $
+            C.runClient cas $ C.query q $
+            C.params C.Quorum (groupId, from, to)
+
+-- | Either append the blob, or say what the index was expected to be.
+maybeAppend
+    :: Storage
+    -> GroupId
+    -> Blob
+    -> IO (Either Int32 ())
+maybeAppend storage groupId blob = case storage of
+    InMemoryStorage var -> do
+        let appendNew =
+                if blobIndex blob == 0
+                    then Focus.insert [blob] $> Right ()
+                    else pure (Left 0)
+        let appendExisting xs =
+                let lastIndex = blobIndex (last xs) in
+                if blobIndex blob == lastIndex + 1
+                    then Focus.adjust (++ [blob]) $> Right ()
+                    else pure (Left (lastIndex + 1))
+        atomically $ StmMap.focus
+            (Focus.lookup >>= maybe appendNew appendExisting)
+            groupId var
+    CassandraStorage cas -> do
+        len <- getBlobCount storage groupId
+        let q :: C.PrepQuery C.W (GroupId, Int32, C.Blob) C.Row
+            q = "insert into blobs (group, index, content) \
+                \values (?, ?, ?) if not exists"
+        let tryInsert = do
+                [row] <-
+                    C.runClient cas $ C.trans q $
+                    C.params C.Quorum
+                        (groupId, blobIndex blob,
+                         C.Blob (encode (blobContent blob)))
+                -- The first column of the returned row signifies
+                -- success/failure of the insert operation
+                pure $ either error id $ C.fromRow 0 row
+        if len /= blobIndex blob
+            then pure (Left len)
+            else tryInsert >>= \case
+                     True  -> pure (Right ())
+                     False -> Left <$> getBlobCount storage groupId

@@ -14,7 +14,7 @@ import Data.Text
 -- | The server stores an append-only list of blobs for each group; the
 -- semantics of those blobs are at the discretion of the clients.
 data Blob = Blob
-    { blobIndex :: Int      -- ^ A zero-based index of the blob in the append list
+    { blobIndex :: Int32    -- ^ A zero-based index of the blob in the append list
     , blobContent :: Value  -- ^ Blob contents (any JSON value)
     } deriving (Eq, Show, Generic)
 

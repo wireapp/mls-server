@@ -14,13 +14,13 @@ import Data.Aeson as Aeson
 -- | All errors that can be thrown by API handlers.
 data MlsError
     = BlobRangeOutOfBounds
-          { allowedRange :: (Int, Int)
-          , requestedRange :: (Int, Int) }
+          { allowedRange :: (Int32, Int32)
+          , requestedRange :: (Int32, Int32) }
     | InvalidBlobRange
-          { requestedRange :: (Int, Int) }
+          { requestedRange :: (Int32, Int32) }
     | UnexpectedBlobIndex
-          { expectedIndex :: Int
-          , gotIndex :: Int }
+          { expectedIndex :: Int32
+          , gotIndex :: Int32 }
     deriving (Eq, Show)
 
 -- | Render a 'MlsError' as a 'ServantErr'.

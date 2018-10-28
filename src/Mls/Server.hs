@@ -36,8 +36,8 @@ import Mls.Server.Settings (Settings)
 type Api =
     -- Get blobs
        "groups" :> Capture "id" GroupId :> "blobs"
-    :> QueryParam "from" Int
-    :> QueryParam "to" Int
+    :> QueryParam "from" Int32
+    :> QueryParam "to" Int32
     :> Get '[JSON] [Blob]
     :<|>
     -- Append a blob
