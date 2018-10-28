@@ -17,11 +17,12 @@ module Mls.Server.Data
     ) where
 
 import Imports
+import Fmt
 import Data.Aeson
 import Control.Monad.Except
-import qualified Cassandra as Cas
-import qualified Cassandra.Settings as Cas
-import qualified Cassandra.Schema as Cas
+import qualified Cassandra as C
+import qualified Cassandra.Settings as C
+import qualified Cassandra.Schema as C
 import qualified StmContainers.Map as StmMap
 import qualified Focus
 import qualified Data.List.NonEmpty as NE
@@ -39,7 +40,7 @@ data Storage
     -- | Store everything in memory, no persistence.
     = InMemoryStorage (StmMap.Map GroupId [Blob])
     -- | Store data in Cassandra.
-    | CassandraStorage Cas.ClientState
+    | CassandraStorage C.ClientState
 
 -- | Storage settings.
 data StorageSettings
@@ -77,18 +78,18 @@ openStorage :: Log.Logger -> StorageSettings -> IO Storage
 openStorage _ UseInMemory =
     InMemoryStorage <$> StmMap.newIO
 openStorage logger (UseCassandra set) = do
-    c <- Cas.initialContactsPlain (host set)
-    p <- Cas.init (Log.clone (Just "cassandra.brig") logger)
-            $ Cas.setContacts (NE.head c) (NE.tail c)
-            . Cas.setPortNumber (fromIntegral (port set))
-            . Cas.setKeyspace (Cas.Keyspace (keyspace set))
-            . Cas.setMaxConnections 4
-            . Cas.setPoolStripes 4
-            . Cas.setSendTimeout 3
-            . Cas.setResponseTimeout 10
-            . Cas.setProtocolVersion Cas.V3
-            $ Cas.defSettings
-    Cas.runClient p $ Cas.versionCheck cassandraSchemaVersion
+    c <- C.initialContactsPlain (host set)
+    p <- C.init (Log.clone (Just "cassandra.mls-server") logger)
+            $ C.setContacts (NE.head c) (NE.tail c)
+            . C.setPortNumber (fromIntegral (port set))
+            . C.setKeyspace (C.Keyspace (keyspace set))
+            . C.setMaxConnections 4
+            . C.setPoolStripes 4
+            . C.setSendTimeout 3
+            . C.setResponseTimeout 10
+            . C.setProtocolVersion C.V3
+            $ C.defSettings
+    C.runClient p $ C.versionCheck cassandraSchemaVersion
     pure (CassandraStorage p)
 
 -- | Destroy the storage (close database connections, etc). Doesn't
@@ -97,7 +98,7 @@ closeStorage :: Storage -> IO ()
 closeStorage (InMemoryStorage _) =
     pure ()
 closeStorage (CassandraStorage cas) =
-    Cas.shutdown cas
+    C.shutdown cas
 
 ----------------------------------------------------------------------------
 -- Storage methods
@@ -117,9 +118,8 @@ getBlobs
     -> Maybe Int       -- ^ End of the range (exclusive)
     -> ExceptT MlsError IO [Blob]
 getBlobs storage groupId mbFrom mbTo = do
-    allBlobs <- liftIO getAllBlobs
-    let len  = length allBlobs
-        from = fromMaybe 0 mbFrom
+    len <- liftIO getBlobCount
+    let from = fromMaybe 0 mbFrom
         to   = fromMaybe len mbTo
     unless (0 <= from && to <= len) $
         throwError $ BlobRangeOutOfBounds
@@ -128,15 +128,44 @@ getBlobs storage groupId mbFrom mbTo = do
     unless (from <= to) $
         throwError $ InvalidBlobRange
             { requestedRange = (from, to) }
-    pure (take (to-from) (drop from allBlobs))
+    -- NB: Here we rely on the fact that the list of blobs is append-only
+    -- and the property of isolation is still satisfied even if blobs get
+    -- appended in the period of time between 'getBlobCount' and 'getRange'.
+    liftIO $ getRange from to
   where
-    -- Get all blobs as a list.
-    getAllBlobs :: IO [Blob]
-    getAllBlobs = case storage of
+    -- Find out how many blobs are available.
+    getBlobCount :: IO Int
+    getBlobCount = case storage of
         InMemoryStorage var -> atomically $
-            fromMaybe [] <$> StmMap.lookup groupId var
-        CassandraStorage cas ->
-            undefined
+            maybe 0 length <$> StmMap.lookup groupId var
+        CassandraStorage cas -> do
+            let q :: C.PrepQuery C.R (Identity GroupId) (Identity Int64)
+                q = "select count(*) from blobs \
+                    \where group = ?"
+            fmap (maybe 0 (fromIntegral . runIdentity)) $
+                C.runClient cas $ C.query1 q $
+                C.params C.Quorum (Identity groupId)
+
+    -- Get a range of blobs without doing any checks on it.
+    getRange :: Int -> Int -> IO [Blob]
+    getRange from to = case storage of
+        InMemoryStorage var -> atomically $
+            take (to-from) . drop from . fromMaybe [] <$>
+            StmMap.lookup groupId var
+        CassandraStorage cas -> do
+            let q :: C.PrepQuery C.R (GroupId, Int64, Int64) (Int64, C.Blob)
+                q = "select index, content from blobs \
+                    \where group = ? and ? <= index and index < ?"
+            let mkBlob (i, c) = Blob
+                    { blobIndex = fromIntegral i
+                    , blobContent = case eitherDecode (C.fromBlob c) of
+                          Right x -> x
+                          Left err -> error $ format
+                              "Group {}, blob #{}: {}" groupId i err
+                    }
+            fmap (map mkBlob) $
+                C.runClient cas $ C.query q $
+                C.params C.Quorum (groupId, fromIntegral from, fromIntegral to)
 
 -- | Append a single blob to the group-stored blobs.
 --
