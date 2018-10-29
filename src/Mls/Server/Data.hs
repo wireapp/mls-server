@@ -45,7 +45,7 @@ data Storage
     -- | Store everything in memory, no persistence.
     = InMemoryStorage (StmMap.Map GroupId [Blob])
     -- | Store data in Cassandra.
-    | CassandraStorage C.ClientState
+    | CassandraStorage C.ClientState CassandraSettings
 
 -- | Storage settings.
 data StorageSettings
@@ -62,9 +62,12 @@ instance FromJSON StorageSettings
 
 -- | Settings needed to be able to talk to Cassandra.
 data CassandraSettings = CassandraSettings
-    { host :: Text
-    , port :: Word16
-    , keyspace :: Text
+    { host :: Text          -- ^ Cassandra host
+    , port :: Word16        -- ^ Cassandra port (usually 9042)
+    , keyspace :: Text      -- ^ Keyspace to use for our data
+    , tracing :: Bool       -- ^ Whether to enable tracing queries (the
+                            --   traces can be seen in the
+                            --   @system_traces.sessions@ table)
     } deriving (Eq, Show, Generic)
 
 instance FromJSON CassandraSettings
@@ -95,14 +98,14 @@ openStorage logger (UseCassandra set) = do
             . C.setProtocolVersion C.V3
             $ C.defSettings
     C.runClient p $ C.versionCheck cassandraSchemaVersion
-    pure (CassandraStorage p)
+    pure (CassandraStorage p set)
 
 -- | Destroy the storage (close database connections, etc). Doesn't
 -- guarantee that the storage can't be used after it's closed.
 closeStorage :: Storage -> IO ()
 closeStorage (InMemoryStorage _) =
     pure ()
-closeStorage (CassandraStorage cas) =
+closeStorage (CassandraStorage cas _) =
     C.shutdown cas
 
 ----------------------------------------------------------------------------
@@ -162,10 +165,10 @@ reset
 reset storage = case storage of
     InMemoryStorage var ->
         atomically $ StmMap.reset var
-    CassandraStorage cas -> do
+    CassandraStorage cas set -> do
         let q :: C.PrepQuery C.W () ()
             q = "truncate blobs"
-        liftIO $ C.runClient cas $ C.write q $ C.params C.Quorum ()
+        liftIO $ C.runClient cas $ C.write q $ params set ()
 
 ----------------------------------------------------------------------------
 -- Helper functions
@@ -178,13 +181,13 @@ getBlobCount
 getBlobCount storage groupId = case storage of
     InMemoryStorage var -> atomically $
         maybe 0 genericLength <$> StmMap.lookup groupId var
-    CassandraStorage cas -> do
+    CassandraStorage cas set -> do
         let q :: C.PrepQuery C.R (Identity GroupId) (Identity Int64)
             q = "select count(*) from blobs \
                 \where group = ?"
         fmap (maybe 0 runIdentity) $
             C.runClient cas $ C.query1 q $
-            C.params C.Quorum (Identity groupId)
+            params set (Identity groupId)
 
 -- | Get a range of blobs without doing any checks on it.
 getRange
@@ -196,7 +199,7 @@ getRange storage groupId (from, to) = case storage of
     InMemoryStorage var -> atomically $
         genericTake (to-from) . genericDrop from . fromMaybe [] <$>
         StmMap.lookup groupId var
-    CassandraStorage cas -> do
+    CassandraStorage cas set -> do
         let q :: C.PrepQuery C.R (GroupId, Int64, Int64) (Int64, Text)
             q = "select index_, content from blobs \
                 \where group = ? and index_ >= ? and index_ < ?"
@@ -209,7 +212,7 @@ getRange storage groupId (from, to) = case storage of
                 }
         fmap (map mkBlob) $
             C.runClient cas $ C.query q $
-            C.params C.Quorum (groupId, from, to)
+            params set (groupId, from, to)
 
 -- | Either append the blob, or say what the index was expected to be.
 maybeAppend
@@ -231,7 +234,7 @@ maybeAppend storage groupId blob = case storage of
         atomically $ StmMap.focus
             (Focus.lookup >>= maybe appendNew appendExisting)
             groupId var
-    CassandraStorage cas -> do
+    CassandraStorage cas set -> do
         len <- getBlobCount storage groupId
         let q :: C.PrepQuery C.W (GroupId, Int64, Text) C.Row
             q = "insert into blobs (group, index_, content) \
@@ -239,9 +242,9 @@ maybeAppend storage groupId blob = case storage of
         let tryInsert = do
                 [row] <-
                     C.runClient cas $ C.trans q $
-                    C.params C.Quorum
-                        (groupId, blobIndex blob,
-                         encodeToText (blobContent blob))
+                    params set (groupId,
+                                blobIndex blob,
+                                encodeToText (blobContent blob))
                 -- The first column of the returned row signifies
                 -- success/failure of the insert operation
                 pure $ either error id $ C.fromRow 0 row
@@ -261,3 +264,19 @@ encodeToText = TL.toStrict . Aeson.encodeToLazyText
 -- | Decode from JSON.
 decodeFromText :: FromJSON a => Text -> Either String a
 decodeFromText = Aeson.eitherDecodeStrict . encodeUtf8
+
+-- | Construct Cassandra params.
+--
+--   * Default consistency: 'C.Quorum'
+--   * Query tracing: taken from 'CassandraSettings'
+params :: C.Tuple a => CassandraSettings -> a -> C.QueryParams a
+params set p = C.QueryParams
+    { C.consistency = C.Quorum
+    , C.skipMetaData = False
+    , C.values = p
+    , C.pageSize = Nothing
+    , C.queryPagingState = Nothing
+    , C.serialConsistency = Nothing
+    , C.enableTracing = Just (tracing set)
+    }
+{-# INLINE params #-}

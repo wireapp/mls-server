@@ -4,4 +4,5 @@ storage:
     host: localhost
     port: 9042
     keyspace: mls
+    tracing: false
 port: 10100
