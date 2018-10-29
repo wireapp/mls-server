@@ -1,0 +1,7 @@
+storage:
+  tag: UseCassandra
+  contents:
+    host: localhost
+    port: 9042
+    keyspace: mls
+port: 10100

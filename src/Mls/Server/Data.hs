@@ -182,8 +182,8 @@ getRange storage groupId (from, to) = case storage of
         StmMap.lookup groupId var
     CassandraStorage cas -> do
         let q :: C.PrepQuery C.R (GroupId, Int32, Int32) (Int32, C.Blob)
-            q = "select index, content from blobs \
-                \where group = ? and ? <= index and index < ?"
+            q = "select index_, content from blobs \
+                \where group = ? and ? <= index_ and index_ < ?"
         let mkBlob (i, c) = Blob
                 { blobIndex = i
                 , blobContent = case eitherDecode (C.fromBlob c) of
@@ -218,7 +218,7 @@ maybeAppend storage groupId blob = case storage of
     CassandraStorage cas -> do
         len <- getBlobCount storage groupId
         let q :: C.PrepQuery C.W (GroupId, Int32, C.Blob) C.Row
-            q = "insert into blobs (group, index, content) \
+            q = "insert into blobs (group, index_, content) \
                 \values (?, ?, ?) if not exists"
         let tryInsert = do
                 [row] <-

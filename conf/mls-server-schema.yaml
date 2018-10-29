@@ -1,0 +1,7 @@
+migHost: localhost
+migPort: 9042
+migKeyspace: mls
+migRepl:
+  tag: SimpleStrategy
+  replicationFactor: 1
+migReset: false
