@@ -10,14 +10,17 @@ This is a prototype MLS server.
 
 First build the project: `make build`. Then:
 
-  * Run with Cassandra: ensure that Cassandra is running on port 9042, then
-    do `make schema run`.
+### In-memory storage
 
-  * Run without persistence: `make run-in-memory`.
+  * `make run` to run the server
+  * `make test` to test the server
 
-  * Test with Cassandra: `make schema-test test-cassandra`.
+### Cassandra storage
 
-  * Test without persistence: `make test`.
+Ensure that Cassandra is running on port 9042.
+
+  * `make schema run-db` to run the server
+  * `make schema-test test-db` to test the server
 
 ## API
 
