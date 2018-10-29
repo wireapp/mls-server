@@ -1,10 +1,6 @@
 # mls-server
 
-This is a prototype MLS server.
-
-  * In-memory for now.
-
-  * Doesn't do any checks, just stores blobs.
+A prototype MLS server. See https://github.com/wireapp/melissa.
 
 ## Running
 
