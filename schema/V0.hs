@@ -12,7 +12,7 @@ migration = Migration 0 "Initial schema" $ do
     void $ schema' [r|
         CREATE TABLE if not exists blobs
             ( group        text
-            , index_       int
+            , index_       bigint
             , content      text    -- JSON
             , primary key  (group, index_)
             ) with clustering order by (index_ asc);

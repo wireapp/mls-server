@@ -18,8 +18,11 @@ module Mls.Server.Data
 
 import Imports
 import Fmt
-import Data.Aeson
+import Data.Aeson as Aeson
+import Data.Aeson.Text as Aeson
 import Control.Monad.Except
+import Data.Text.Encoding (encodeUtf8)
+import qualified Data.Text.Lazy as TL
 import qualified Cassandra as C
 import qualified Cassandra.Settings as C
 import qualified Cassandra.Schema as C
@@ -115,8 +118,8 @@ closeStorage (CassandraStorage cas) =
 getBlobs
     :: Storage
     -> GroupId         -- ^ Group ID
-    -> Maybe Int32     -- ^ Beginning of the range (inclusive)
-    -> Maybe Int32     -- ^ End of the range (exclusive)
+    -> Maybe Int64     -- ^ Beginning of the range (inclusive)
+    -> Maybe Int64     -- ^ End of the range (exclusive)
     -> ExceptT MlsError IO [Blob]
 getBlobs storage groupId mbFrom mbTo = do
     len <- liftIO $ getBlobCount storage groupId
@@ -158,12 +161,12 @@ appendBlob storage groupId blob = do
 getBlobCount
     :: Storage
     -> GroupId
-    -> IO Int32
+    -> IO Int64
 getBlobCount storage groupId = case storage of
     InMemoryStorage var -> atomically $
         maybe 0 genericLength <$> StmMap.lookup groupId var
     CassandraStorage cas -> do
-        let q :: C.PrepQuery C.R (Identity GroupId) (Identity Int32)
+        let q :: C.PrepQuery C.R (Identity GroupId) (Identity Int64)
             q = "select count(*) from blobs \
                 \where group = ?"
         fmap (maybe 0 runIdentity) $
@@ -174,19 +177,19 @@ getBlobCount storage groupId = case storage of
 getRange
     :: Storage
     -> GroupId
-    -> (Int32, Int32) -- ^ Range
+    -> (Int64, Int64) -- ^ Range
     -> IO [Blob]
 getRange storage groupId (from, to) = case storage of
     InMemoryStorage var -> atomically $
         genericTake (to-from) . genericDrop from . fromMaybe [] <$>
         StmMap.lookup groupId var
     CassandraStorage cas -> do
-        let q :: C.PrepQuery C.R (GroupId, Int32, Int32) (Int32, C.Blob)
+        let q :: C.PrepQuery C.R (GroupId, Int64, Int64) (Int64, Text)
             q = "select index_, content from blobs \
-                \where group = ? and ? <= index_ and index_ < ?"
+                \where group = ? and index_ >= ? and index_ < ?"
         let mkBlob (i, c) = Blob
                 { blobIndex = i
-                , blobContent = case eitherDecode (C.fromBlob c) of
+                , blobContent = case decodeFromText c of
                       Right x -> x
                       Left err -> error $ format
                           "Group {}, blob #{}: {}" groupId i err
@@ -200,7 +203,7 @@ maybeAppend
     :: Storage
     -> GroupId
     -> Blob
-    -> IO (Either Int32 ())
+    -> IO (Either Int64 ())
 maybeAppend storage groupId blob = case storage of
     InMemoryStorage var -> do
         let appendNew =
@@ -217,7 +220,7 @@ maybeAppend storage groupId blob = case storage of
             groupId var
     CassandraStorage cas -> do
         len <- getBlobCount storage groupId
-        let q :: C.PrepQuery C.W (GroupId, Int32, C.Blob) C.Row
+        let q :: C.PrepQuery C.W (GroupId, Int64, Text) C.Row
             q = "insert into blobs (group, index_, content) \
                 \values (?, ?, ?) if not exists"
         let tryInsert = do
@@ -225,7 +228,7 @@ maybeAppend storage groupId blob = case storage of
                     C.runClient cas $ C.trans q $
                     C.params C.Quorum
                         (groupId, blobIndex blob,
-                         C.Blob (encode (blobContent blob)))
+                         encodeToText (blobContent blob))
                 -- The first column of the returned row signifies
                 -- success/failure of the insert operation
                 pure $ either error id $ C.fromRow 0 row
@@ -234,3 +237,14 @@ maybeAppend storage groupId blob = case storage of
             else tryInsert >>= \case
                      True  -> pure (Right ())
                      False -> Left <$> getBlobCount storage groupId
+
+----------------------------------------------------------------------------
+-- Utilities
+
+-- | Encode to JSON.
+encodeToText :: ToJSON a => a -> Text
+encodeToText = TL.toStrict . Aeson.encodeToLazyText
+
+-- | Decode from JSON.
+decodeFromText :: FromJSON a => Text -> Either String a
+decodeFromText = Aeson.eitherDecodeStrict . encodeUtf8
