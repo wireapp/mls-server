@@ -1,8 +1,8 @@
-# Schema migration settings
+# Schema migration settings for tests
 
 migHost: localhost
 migPort: 9042
-migKeyspace: mls
+migKeyspace: mls_test
 migRepl:
   tag: SimpleStrategy
   replicationFactor: 1

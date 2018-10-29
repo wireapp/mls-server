@@ -13,32 +13,25 @@ import System.Exit (die)
 import Data.Yaml hiding (Parser)
 import Options.Applicative
 
--- copied from types-common
+-- copied from types-common and modified to allow env options as well
 getOptions
     :: FromJSON a
     => String            -- ^ Program description
-    -> Maybe (Parser a)  -- ^ CLI parser for the options (if there is no config)
-    -> FilePath          -- ^ Default config path, can be overridden with @--config-file@
+    -> FilePath          -- ^ Default config path, can be overridden with
+                         --   @--config-file@ or with @CONFIG_FILE@
     -> IO a
-getOptions desc pars defaultPath = do
-    path <- parseConfigPath defaultPath mkDesc
-    file <- doesFileExist path
-    case (file, pars) of
-        -- Config exists, we can just take options from there
-        (True, _) -> do
-            configFile <- decodeFileEither path
-            case configFile of
-                Left e  -> fail $ show e
-                Right o -> return o
-        -- Config doesn't exist but at least we have a CLI options parser
-        (False, Just p) -> do
-            hPutStrLn stderr $
-                "Config file at " ++ path ++
-                " does not exist, falling back to command-line arguments. \n"
-            execParser (info (helper <*> p) mkDesc)
-        -- No config, no parser :(
-        (False, Nothing) -> do
-            die $ "Config file at " ++ path ++ " does not exist. \n"
+getOptions desc defaultPath = do
+    -- We're using the fact that the 'Alternative' instance for IO picks the
+    -- first thing that doesn't throw an IO error.
+    path <- getEnv "CONFIG_FILE"
+        <|> parseConfigPath defaultPath mkDesc
+    exists <- doesFileExist path
+    unless exists $
+        die $ "Config file at " ++ path ++ " does not exist. \n"
+    configFile <- decodeFileEither path
+    case configFile of
+        Left e  -> fail $ show e
+        Right o -> return o
   where
     mkDesc = header desc <> fullDesc
 

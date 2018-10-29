@@ -6,6 +6,19 @@ This is a prototype MLS server.
 
   * Doesn't do any checks, just stores blobs.
 
+## Running
+
+First build the project: `make build`. Then:
+
+  * Run with Cassandra: ensure that Cassandra is running on port 9042, then
+    do `make schema run`.
+
+  * Run without persistence: `make run-in-memory`.
+
+  * Test with Cassandra: `make schema-test test-cassandra`.
+
+  * Test without persistence: `make test`.
+
 ## API
 
 All endpoints accept and return JSON, unless stated otherwise.

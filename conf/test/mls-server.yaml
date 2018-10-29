@@ -1,0 +1,5 @@
+# Settings used for testing with an in-memory server
+
+storage:
+  tag: UseInMemory
+port: 10100  # doesn't matter

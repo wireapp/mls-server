@@ -14,8 +14,8 @@ import qualified V0
 main :: IO ()
 main = do
     let desc = "MLS Server Schema Migrations"
-        defaultPath = "/etc/wire/mls-server/conf/mls-server-schema.yaml"
-    o <- getOptions desc Nothing defaultPath
+        defaultPath = "./conf/mls-server-schema.yaml"
+    o <- getOptions desc defaultPath
     l <- new $ setOutput StdOut . setFormat Nothing $ defSettings
     migrateSchema l o
         [ V0.migration

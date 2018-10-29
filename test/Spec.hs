@@ -15,13 +15,13 @@ import qualified Data.ByteString.Lazy as BSL
 import Mls.Server
 import Mls.Server.Settings
 import Mls.Server.Data
+import Mls.Server.Util
 
 main :: IO ()
 main = do
-    let settings = Settings
-            { storage = UseInMemory
-            , port = 8080  -- won't be used
-            }
+    let desc = "MLS Server Testsuite"
+        defaultPath = "./conf/test/mls-server.yaml"
+    settings <- getOptions desc defaultPath
     bracket (newEnv settings) closeEnv $ \env ->
         hspec (spec env)
 

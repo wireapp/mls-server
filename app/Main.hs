@@ -9,7 +9,7 @@ import Mls.Server.Util
 main :: IO ()
 main = do
     let desc = "MLS Server"
-        defaultPath = "/etc/wire/mls-server/conf/mls-server.yaml"
-    settings <- getOptions desc Nothing defaultPath
+        defaultPath = "./conf/mls-server.yaml"
+    settings <- getOptions desc defaultPath
     bracket (newEnv settings) closeEnv $ \env ->
         runServer env
