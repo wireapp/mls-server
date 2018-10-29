@@ -44,7 +44,10 @@ type Api =
        "groups" :> Capture "id" GroupId :> "blobs"
     :> ReqBody '[JSON] Blob
     :> PostNoContent '[JSON] NoContent  -- NB: 'PostNoContent' instructs
-                                        -- servant to return code 204
+    :<|>                                -- servant to return code 204
+    -- Clear all storage
+       "i" :> "reset"
+    :> PostNoContent '[JSON] NoContent
 
 -- | A list of handlers for the API.
 server :: Env -> Server Api
@@ -53,6 +56,8 @@ server env =
         Data.getBlobs (storage env)
         :<|>
         (\a b -> Data.appendBlob (storage env) a b $> NoContent)
+        :<|>
+        (Data.reset (storage env) $> NoContent)
   where
     toHandler :: ExceptT MlsError IO a -> Handler a
     toHandler = Handler . withExceptT mlsError

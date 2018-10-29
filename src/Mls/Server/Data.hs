@@ -10,6 +10,7 @@ module Mls.Server.Data
     -- ** Methods
     , getBlobs
     , appendBlob
+    , reset
 
     -- * Cassandra-specific settings
     , CassandraSettings(..)
@@ -153,6 +154,18 @@ appendBlob storage groupId blob = do
             throwError $ UnexpectedBlobIndex
                 { expectedIndex = expectedIndex
                 , gotIndex = blobIndex blob }
+
+-- | Reset the storage.
+reset
+    :: Storage
+    -> ExceptT MlsError IO ()
+reset storage = case storage of
+    InMemoryStorage var ->
+        atomically $ StmMap.reset var
+    CassandraStorage cas -> do
+        let q :: C.PrepQuery C.W () ()
+            q = "truncate blobs"
+        liftIO $ C.runClient cas $ C.write q $ C.params C.Quorum ()
 
 ----------------------------------------------------------------------------
 -- Helper functions

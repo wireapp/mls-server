@@ -28,6 +28,13 @@ main = do
 spec :: Env -> Spec
 spec env = with (pure (app env)) $ do
 
+    -- Reset the storage before we start
+    describe "POST /i/reset" $ do
+        it "resets the storage" $ do
+            post "/i/reset" "" `shouldRespondWith` 204
+            get "/groups/1/blobs" `shouldRespondWith`
+                [json| [] |]
+
     -- Get blobs in range [X; Y)
     describe "GET /groups/:id/blobs" $ do
         it "succeeds for a non-existent group" $

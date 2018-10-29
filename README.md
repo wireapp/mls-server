@@ -107,3 +107,13 @@ Blob indices have to go in order, starting from 0:
         }
 }
 ```
+
+### `POST /i/reset`
+
+Clear all storage. An internal endpoint.
+
+**Returns:**
+
+| Status | Return type | Description |
+| --- | --- | --- |
+| 204 | - | The storage has been cleared. |
