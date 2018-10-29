@@ -247,7 +247,11 @@ maybeAppend storage groupId blob = case storage of
                                 encodeToText (blobContent blob))
                 -- The first column of the returned row signifies
                 -- success/failure of the insert operation
-                pure $ either error id $ C.fromRow 0 row
+                case C.fromRow 0 row of
+                    Left err -> error err
+                    Right Nothing -> error
+                        "Expected [applied] to contain a value, got null"
+                    Right (Just x) -> pure x
         if len /= blobIndex blob
             then pure (Left len)
             else tryInsert >>= \case
