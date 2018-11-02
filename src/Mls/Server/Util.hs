@@ -8,7 +8,6 @@ module Mls.Server.Util
     ) where
 
 import Imports
-import System.IO (hPutStrLn)
 import System.Exit (die)
 import Data.Yaml hiding (Parser)
 import Options.Applicative

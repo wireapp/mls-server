@@ -14,12 +14,10 @@ module Mls.Server
     ) where
 
 import Imports
-import Data.Aeson as Aeson
 import Network.Wai
 import Network.Wai.Handler.Warp (run)
 import Servant
 import Control.Monad.Except
-import Control.Exception (bracket)
 import qualified System.Logger as Log
 import System.Logger (Logger)
 

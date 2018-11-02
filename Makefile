@@ -7,6 +7,12 @@
 build:
 	stack build --test --no-run-tests
 
+# Install the project into ./dist
+.PHONY: install
+install:
+	mkdir -p dist
+	stack install . --pedantic --test --local-bin-path=dist
+
 ##
 ## In-memory storage
 ##

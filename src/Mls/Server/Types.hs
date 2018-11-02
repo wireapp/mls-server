@@ -6,7 +6,6 @@ module Mls.Server.Types
 
 import Imports
 import Data.Aeson
-import Data.Text
 
 ----------------------------------------------------------------------------
 -- Blob

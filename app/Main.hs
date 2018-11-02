@@ -10,6 +10,6 @@ main :: IO ()
 main = do
     let desc = "MLS Server"
         defaultPath = "./conf/mls-server.yaml"
-    settings <- getOptions desc defaultPath
-    bracket (newEnv settings) closeEnv $ \env ->
+    set <- getOptions desc defaultPath
+    bracket (newEnv set) closeEnv $ \env ->
         runServer env

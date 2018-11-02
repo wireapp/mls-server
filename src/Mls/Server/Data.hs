@@ -153,9 +153,9 @@ appendBlob
 appendBlob storage groupId blob = do
     liftIO (maybeAppend storage groupId blob) >>= \case
         Right () -> pure ()
-        Left expectedIndex ->
+        Left expected ->
             throwError $ UnexpectedBlobIndex
-                { expectedIndex = expectedIndex
+                { expectedIndex = expected
                 , gotIndex = blobIndex blob }
 
 -- | Reset the storage.

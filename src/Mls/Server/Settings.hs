@@ -7,7 +7,7 @@ module Mls.Server.Settings
 import Imports
 import Data.Aeson
 
-import Mls.Server.Data (StorageSettings)
+import Mls.Server.Data (StorageSettings(..))
 
 -- | Settings that are consumed on startup and that can be accessed at
 -- runtime.
