@@ -2,8 +2,8 @@
 
 A prototype MLS server. See https://github.com/wireapp/melissa.
 
-**Note: this project is currently not maintained and does not compile anymore.
-The problem is that newer versions of [stack](https://github.com/commercialhaskell/stack) complain about symlinks in [wire-server](https://github.com/wireapp/wire-server), which this project depends on.**
+**Note: this project is currently not maintained and does not compile with Stack 2 or greater.
+The problem is that it complains about symlinks in [wire-server](https://github.com/wireapp/wire-server), which this project depends on.**
 
 ## Running
 
