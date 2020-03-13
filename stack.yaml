@@ -10,7 +10,7 @@ extra-deps:
 
 # The newer version of stm-containers is more pleasant to work with.
 - stm-containers-1.1.0.2
-- focus-1.0.1.2
+- focus-1.0.1.3
 - deferred-folds-0.9.7.1
 - stm-hamt-1.2.0.2
 - primitive-0.6.4.0
